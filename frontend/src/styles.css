@@ -1,0 +1,206 @@
+import { useEffect, useMemo, useState } from 'react'
+import {
+  fetchAnalysis,
+  fetchExercises,
+  fetchLesson,
+  fetchLessons,
+  fetchPredictions,
+  uploadFile,
+} from './services/api'
+
+export default function App() {
+  const [lessons, setLessons] = useState([])
+  const [selectedLessonId, setSelectedLessonId] = useState(null)
+  const [selectedLesson, setSelectedLesson] = useState(null)
+  const [exerciseData, setExerciseData] = useState({ exercises: [] })
+  const [analysis, setAnalysis] = useState({ topics: [] })
+  const [predictions, setPredictions] = useState({ predictions: [] })
+  const [uploadTitle, setUploadTitle] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadMessage, setUploadMessage] = useState('')
+
+  useEffect(() => {
+    loadLessons()
+    loadAnalysis()
+    loadPredictions()
+  }, [])
+
+  async function loadLessons() {
+    const result = await fetchLessons().catch(() => ({ lessons: [] }))
+    setLessons(result.lessons || [])
+    if (result.lessons?.length) {
+      setSelectedLessonId(result.lessons[0].id)
+      loadLesson(result.lessons[0].id)
+    }
+  }
+
+  async function loadLesson(id) {
+    const lesson = await fetchLesson(id).catch(() => null)
+    setSelectedLesson(lesson)
+    const ex = await fetchExercises(id, 'beginner').catch(() => ({ exercises: [] }))
+    setExerciseData(ex)
+  }
+
+  async function loadAnalysis() {
+    const result = await fetchAnalysis().catch(() => ({ topics: [] }))
+    setAnalysis(result)
+  }
+
+  async function loadPredictions() {
+    const result = await fetchPredictions().catch(() => ({ predictions: [] }))
+    setPredictions(result)
+  }
+
+  const topTopics = useMemo(() => (analysis.topics || []).slice(0, 5), [analysis])
+
+  async function handleUpload(event) {
+    const file = event.target.files[0]
+    if (!file) return
+    setUploading(true)
+    setUploadMessage('')
+    try {
+      const result = await uploadFile(file, uploadTitle || file.name)
+      setUploadMessage(`تم رفع الملف بنجاح: ${result.file_name}`)
+      await loadLessons()
+      await loadAnalysis()
+    } catch (error) {
+      setUploadMessage(error.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand-wrap">
+          <div className="brand-mark">B</div>
+          <div>
+            <h1>BAC GENUS</h1>
+            <small>Studying App</small>
+          </div>
+        </div>
+        <nav className="nav">
+          <a href="#lessons">الدروس</a>
+          <a href="#practice">التمارين</a>
+          <a href="#analysis">التحليل</a>
+          <a href="#predictions">التوقعات</a>
+          <a href="#admin">الإدارة</a>
+        </nav>
+      </header>
+
+      <main className="layout">
+        <section className="hero panel">
+          <div>
+            <span className="tag">منصة تعليمية ذكية</span>
+            <h2>ساعد التلميذ على فهم الفلسفة، واكتشاف مواضيع الامتحان.</h2>
+            <p>
+              BAC GENUS يشرح الدروس، يكوّن تمارين حسب مستوى الطالب، ويحلل المواضيع السابقة
+              لتقترح أفضل الاحتمالات للامتحان المقبل.
+            </p>
+          </div>
+        </section>
+
+        <section id="lessons" className="panel">
+          <div className="section-head">
+            <h3>قائمة الدروس</h3>
+          </div>
+          <div className="lesson-list">
+            {lessons.map((lesson) => (
+              <button
+                key={lesson.id}
+                className={`lesson-item ${selectedLessonId === lesson.id ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedLessonId(lesson.id)
+                  loadLesson(lesson.id)
+                }}
+              >
+                <strong>{lesson.title}</strong>
+                <span>{lesson.summary}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="content-grid">
+          <article className="panel lesson-view">
+            {selectedLesson ? (
+              <>
+                <h3>{selectedLesson.title}</h3>
+                <p className="lesson-summary">{selectedLesson.summary}</p>
+                <div className="lesson-content">
+                  {selectedLesson.content}
+                </div>
+              </>
+            ) : (
+              <p>لا توجد دروس بعد.</p>
+            )}
+          </article>
+
+          <aside id="practice" className="panel">
+            <h3>تمارين</h3>
+            <div className="exercise-list">
+              {(exerciseData.exercises || []).map((ex) => (
+                <div key={ex.id} className="exercise-item">
+                  <span className="badge">{ex.level}</span>
+                  <p>{ex.question}</p>
+                  {ex.answer && <small>{ex.answer}</small>}
+                </div>
+              ))}
+            </div>
+          </aside>
+        </section>
+
+        <section id="analysis" className="panel">
+          <div className="section-head">
+            <h3>تحليل المواضيع</h3>
+          </div>
+          <div className="topic-grid">
+            {topTopics.map((item) => (
+              <div key={item.id} className="topic-card">
+                <h4>{item.name}</h4>
+                <strong>{item.score}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="predictions" className="panel">
+          <div className="section-head">
+            <h3>مواضيع محتملة للامتحان</h3>
+          </div>
+          <div className="prediction-list">
+            {(predictions.predictions || []).map((item) => (
+              <div key={item.topic} className="prediction-item">
+                <div>
+                  <h4>{item.topic}</h4>
+                  <p>{item.reason}</p>
+                </div>
+                <span>{Math.round(item.probability * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="admin" className="panel admin-panel">
+          <div className="section-head">
+            <h3>لوحة الإدارة</h3>
+          </div>
+
+          <label className="file-label">
+            <span>عنوان الدرس</span>
+            <input value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="مثال: المعرفة والواقع" />
+          </label>
+
+          <label className="upload-box">
+            <input type="file" onChange={handleUpload} disabled={uploading} />
+            <span>{uploading ? 'جارٍ الرفع...' : 'رفع ملف PDF أو نصي'}</span>
+          </label>
+
+          {uploadMessage && <p className="message">{uploadMessage}</p>}
+        </section>
+      </main>
+    </div>
+  )
+}
+

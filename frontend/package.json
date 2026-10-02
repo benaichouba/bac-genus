@@ -1,0 +1,62 @@
+import re
+from pathlib import Path
+from typing import List
+
+from pypdf import PdfReader
+
+from schemas import add_exercise, get_exercises_by_lesson, upsert_topic, get_topics
+
+
+def parse_uploaded_text(file_path: Path) -> str:
+    suffix = file_path.suffix.lower()
+
+    if suffix == ".pdf":
+        try:
+            reader = PdfReader(str(file_path))
+            pages = []
+            for page in reader.pages:
+                text = page.extract_text() or ""
+                pages.append(text)
+            return "\n\n".join(pages)
+        except Exception:
+            return file_path.read_text(encoding="utf-8", errors="ignore")
+
+    return file_path.read_text(encoding="utf-8", errors="ignore")
+
+
+def generate_exercise_set(lesson_id: int, level: str = "beginner") -> List[dict]:
+    exercises = get_exercises_by_lesson(lesson_id, level)
+    if exercises:
+        return exercises
+
+    sample = [
+        f"ما المقصود بمفهوم {lesson_id} في الفلسفة؟",
+        "اذكر مثالاً يوضح هذا المفهوم في الحياة اليومية.",
+        "ما العلاقة بين هذا المفهوم والواقع؟",
+        "ما النقطة الأساسية التي يركز عليها هذا الدرس؟",
+    ]
+
+    results = []
+    for idx, q in enumerate(sample, start=1):
+        ex_id = add_exercise(lesson_id, level, q, answer="إجابة نموذجية مقترحة")
+        results.append({"id": ex_id, "lesson_id": lesson_id, "level": level, "question": q, "answer": "إجابة نموذجية مقترحة"})
+    return results
+
+
+def update_topic_scores(text: str):
+    terms = {
+        "المعرفة": ["المعرفة", "العقل", "الحقيقة", "الوعي"],
+        "الوجود": ["الوجود", "الإنسان", "الواقع", "الحياة"],
+        "الأخلاق": ["الأخلاق", "الحرية", "الواجب", "القيمة"],
+        "النقد": ["النقد", "المقارنة", "التحليل", "التفسير"],
+    }
+
+    for name, keywords in terms.items():
+        score = 0
+        for kw in keywords:
+            if kw in text:
+                score += 1
+        if score > 0:
+            upsert_topic(name, score)
+
+
